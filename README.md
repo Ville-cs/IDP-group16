@@ -4,5 +4,5 @@
 
 * Ville Poikela
 * Joni Niiranen
-* 3
+* Viet Nguyen
 * 4
