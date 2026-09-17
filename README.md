@@ -3,6 +3,6 @@
 ### Members
 
 * Ville Poikela
-* insert your names here
+* Joni Niiranen
 * 3
 * 4
