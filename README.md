@@ -4,6 +4,13 @@ SPDX-FileCopyrightText: 2025 Joni Hyttinen <joni.hyttinen@uef.fi>
 SPDX-License-Identifier: CC-BY-NC-SA-4.0
 -->
 
+# Team members
+
+* Ville Poikela
+* Joni Niiranen
+* Viet Nguyen
+* 4
+
 # Signal analyzer template
 This repository contains a project template that can be used as a base for your
 own solution. The application is written in [Python](https://www.python.org) and
@@ -166,8 +173,3 @@ Tasks to solve the industrial problem by extending the template could include:
 - Extend the application to count positive/false detections using a ground
   truth file?
 - Switch **QtCharts** to something more capable?
-
-* Ville Poikela
-* Joni Niiranen
-* Viet Nguyen
-* 4
