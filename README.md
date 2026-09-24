@@ -167,3 +167,7 @@ Tasks to solve the industrial problem by extending the template could include:
   truth file?
 - Switch **QtCharts** to something more capable?
 
+* Ville Poikela
+* Joni Niiranen
+* Viet Nguyen
+* 4
