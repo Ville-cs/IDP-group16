@@ -1,0 +1,20 @@
+[project]
+name = "signal_app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "hyjo-github", email = "joni.hyttinen@uef.fi" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.5.2",
+    "pyside6>=6.11.2",
+]
+
+[project.scripts]
+signal_app = "signal_app.signal_app_main_window:run"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
