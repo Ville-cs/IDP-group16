@@ -244,7 +244,6 @@ cython_debug/
 #.idea/
 
 # project data
-data/Big\ pieces*
-data/Measurements*
-data/Data\ for*
-data/Tumor*
+data/*
+!data/.gitkeep
+!data/README.md
