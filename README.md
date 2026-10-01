@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-NC-SA-4.0
 * Ville Poikela
 * Joni Niiranen
 * Viet Nguyen
-* 4
+* Tejaswini Shekharaswamy
 
 # Signal analyzer template
 This repository contains a project template that can be used as a base for your
