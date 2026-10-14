@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from scipy.signal import find_peaks #Python library for finding peaks
 
 import numpy as np
 from PySide6.QtCore import Signal
@@ -260,6 +261,19 @@ class SignalAnalyzer:
         self.y_array = self.y_array[:, 1]
 
         # DETECTION ALGORITHMS
+        """
+        Peak detection algorithm using find_peak
+        
+        """
+        peaks, properties = find_peaks(
+            self.y_array,
+            prominence=100,
+            distance=5000
+        )
+
+        print("Peaks found:", len(peaks))
+        print("First peak indexes:", peaks[:10])
+        print("First peak values:", self.y_array[peaks[:10]])
 
         # Update y-axis min/max if need be:
         self.y_min = (
