@@ -1,7 +1,9 @@
 import csv
 from pathlib import Path
+import os
 
 import numpy as np
+import pandas as pd
 from PySide6.QtCore import Signal
 
 
@@ -44,19 +46,23 @@ class SignalConverter:
         if progress_callback:
             progress_callback.emit(0)
 
-        # This is terrible: read each row from the file to count the number of rows
-        row_count = 0
-        with source_signal_path.open() as source_signal_file:
-            reader = csv.reader(source_signal_file)
-            next(reader)
-            for row in csv.reader(source_signal_file):
-                if not row:
-                    continue
-                row_count += 1
+        # a faster way to count rows by using binary chunks
+        def count_data_rows(path, chunk_size=1 << 24): # 16 MB chunks
+            n_lines = 0
+            last_byte = b"\n"
+            with path.open("rb") as f:
+                while chunk := f.read(chunk_size):
+                    n_lines += chunk.count(b"\n")
+                    last_byte = chunk[-1:]
+            if last_byte != b"\n":  # last line has no trailing newline
+                n_lines += 1
+            return n_lines - 1  # subtract header
 
-                # Was the process cancelled during our reading?
-                if self.cancelled:
-                    return False
+        n_rows = count_data_rows(source_signal_path)
+
+        # Was the process cancelled during our reading?
+        if self.cancelled:
+            return False
 
         # Open a memory mapped binary file for writing. Set data type to 16-bit integers. Save both adc1 and adc2
         # in their own columns as in the original file. Order refers to C and Fortran conventions of multidimensional
@@ -68,31 +74,37 @@ class SignalConverter:
             dtype=np.int16,
             mode="w+",
             offset=0,
-            shape=(row_count, 2),
+            shape=(n_rows, 2),
             order="C",
         )
 
-        # Read the CSV-file row-by-row writing it into the binary data file. This approach is slow, but it allows full
-        # control of the reading process - every 50000 points or 1 second of data, the progress bar is updated.
-        # Using some other reader that allows larger chunks could be more efficient than this.
-        with source_signal_path.open() as source_signal_file:
-            reader = csv.reader(source_signal_file)
-            next(reader)
-            for index, row in enumerate(reader):
-                if not row:
-                    continue
-                data[index, :] = row
-                if index % (50000 * 60) == 0:
-                    # Force the data array to write changes to disk. This presumably happens automatically too at
-                    # implementation-defined points, but this the API provided to the numpy users.
-                    data.flush()
-                if progress_callback and index % 50000 == 0:
-                    progress_callback.emit((index / row_count) * 100)
+        CHUNK_ROWS = 500_000
 
-                if self.cancelled:
-                    del data
-                    target_signal_path.unlink()  # Remove the binary data file
-                    return False
+        # A faster way to read CSVs in chunks using pandas
+        written = 0
+        reader = pd.read_csv(
+            source_signal_path,
+            header=0,
+            dtype=np.int16,
+            chunksize=CHUNK_ROWS,
+            skip_blank_lines=True,
+        )
+
+        for chunk in reader:
+            values = chunk.to_numpy()
+            data[written:written + len(values), :] = values
+            written += len(values)
+
+            # Push changes to disk after each chunk
+            data.flush()
+
+            if progress_callback:
+                progress_callback.emit((written / n_rows) * 100)
+
+            if self.cancelled:
+                del data
+                target_signal_path.unlink()  # Remove the binary data file
+                return False
 
         data.flush()  # again, once more force the array to write changes to disk
         if not self.cancelled and progress_callback:
