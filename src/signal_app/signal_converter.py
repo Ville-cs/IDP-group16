@@ -69,12 +69,19 @@ class SignalConverter:
         # array layouts: C uses row-major and Fortran column-major layouts (see f.ex. Wikipedia article on the topic
         # https://en.wikipedia.org/wiki/Row-_and_column-major_order).
         # NOTE: the binary file will not contain dtype, shape, or order information. They must be supplied manually.
+
+        SAMPLE_RATE = 50_000
+        STEP = 100  # downsampling to every 100th data point
+        CHUNK_ROWS = SAMPLE_RATE
+
+        n_out = (n_rows + STEP - 1) // STEP
+
         data = np.memmap(
             target_signal_path,
             dtype=np.int16,
             mode="w+",
             offset=0,
-            shape=(n_rows, 2),
+            shape=(n_out, 2),
             order="C",
         )
 
@@ -90,16 +97,20 @@ class SignalConverter:
             skip_blank_lines=True,
         )
 
+        written = 0
+        source_rows = 0
+
         for chunk in reader:
-            values = chunk.to_numpy()
+            values = chunk.to_numpy()[::STEP]
             data[written:written + len(values), :] = values
             written += len(values)
+            source_rows += len(chunk)
 
             # Push changes to disk after each chunk
             data.flush()
 
             if progress_callback:
-                progress_callback.emit((written / n_rows) * 100)
+                progress_callback.emit((source_rows / n_rows) * 100)
 
             if self.cancelled:
                 del data
