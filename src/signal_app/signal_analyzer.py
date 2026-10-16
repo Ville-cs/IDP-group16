@@ -243,6 +243,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        update_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         """Loads a signal window.
@@ -255,6 +256,7 @@ class SignalAnalyzer:
         self.signal_path = signal_path
         if set_chart_axis_y:
             set_chart_axis_y.emit(self.y_min, self.y_max)
+
 
         self.x_array, self.y_array = self._read_signal_at(start_x, end_x)
         self.x_array = self.x_array / 50000
@@ -270,6 +272,10 @@ class SignalAnalyzer:
             prominence=100,
             distance=5000
         )
+
+        #defining the peaks for drawing points
+        peak_x = self.x_array[peaks]
+        peak_y = self.y_array[peaks]
 
         print("Peaks found:", len(peaks))
         print("First peak indexes:", peaks[:10])
@@ -292,6 +298,13 @@ class SignalAnalyzer:
         if update_chart:
             update_chart.emit(vis_x, vis_y)
 
+        # update peak markers
+        if update_peaks:
+            print("peaks test")
+            update_peaks.emit(peak_x, peak_y)
+        else:
+            print("no peaks")
+
         # ADD MARKERS TO CHART
 
     def current_window(
@@ -299,6 +312,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        update_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         self.load_window(
@@ -307,6 +321,7 @@ class SignalAnalyzer:
             signal_path,
             set_chart_axis_y,
             update_chart,
+            update_peaks,
             progress_callback,
         )
 

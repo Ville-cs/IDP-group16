@@ -11,7 +11,7 @@ import logging
 import time
 
 import numpy as np
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis, QScatterSeries
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
@@ -32,6 +32,15 @@ class SignalWindowChartWidget(QWidget):
         # self.chart.setAnimationOptions(QChart.AllAnimations)
         # self.chart.setAnimationDuration(50)
         self.add_series("Amplitude")
+
+        self.peak_series = QScatterSeries()
+        self.peak_series.setName("Peaks")
+        self.peak_series.setMarkerSize(10)
+
+        self.chart.addSeries(self.peak_series)
+
+        self.peak_series.attachAxis(self.axis_x)
+        self.peak_series.attachAxis(self.axis_y)
 
         self.chart_view = QChartView(self.chart)
         self.chart_view.setRenderHint(QPainter.Antialiasing)
@@ -106,3 +115,12 @@ class SignalWindowChartWidget(QWidget):
         logger.debug(
             "Finished updating chart in %.2f ms", (end_time - start_time) * 1000
         )
+
+    @Slot(np.ndarray, np.ndarray)
+    def replace_peaks(self, x: np.ndarray, y: np.ndarray):
+        self.peak_series.clear()
+
+        for peak_x, peak_y in zip(x, y):
+                self.peak_series.append(float(peak_x), float(peak_y))
+
+
