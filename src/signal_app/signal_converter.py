@@ -1,4 +1,3 @@
-import csv
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +25,11 @@ class SignalConverter:
          # Start the thread
          threadpool.start(worker)
     """
+
+    SOURCE_SAMPLE_RATE = 50_000  # all source CSVs are assumed to be sampled at 50 kHz
+    TARGET_SAMPLE_RATE = 1_000
+    STEP = SOURCE_SAMPLE_RATE // TARGET_SAMPLE_RATE  # keep every 50th sample
+    CHUNK_ROWS = 10 * SOURCE_SAMPLE_RATE  # read ten seconds of the signal at a time
 
     # Flag to indicate the conversion process should be cancelled.
     cancelled: bool = False
@@ -69,11 +73,7 @@ class SignalConverter:
         # https://en.wikipedia.org/wiki/Row-_and_column-major_order).
         # NOTE: the binary file will not contain dtype, shape, or order information. They must be supplied manually.
 
-        SAMPLE_RATE = 50_000
-        STEP = 100  # downsampling to every 100th data point
-        CHUNK_ROWS = SAMPLE_RATE
-
-        n_out = (n_rows + STEP - 1) // STEP
+        n_out = (n_rows + self.STEP - 1) // self.STEP
 
         data = np.memmap(
             target_signal_path,
@@ -84,15 +84,13 @@ class SignalConverter:
             order="C",
         )
 
-        CHUNK_ROWS = 500_000
-
-        # A faster way to read CSVs in chunks using pandas
-        written = 0
+        # A faster way to read CSVs in chunks using pandas. CHUNK_ROWS must be a multiple of STEP so that
+        # every chunk starts on a kept sample.
         reader = pd.read_csv(
             source_signal_path,
             header=0,
             dtype=np.int16,
-            chunksize=CHUNK_ROWS,
+            chunksize=self.CHUNK_ROWS,
             skip_blank_lines=True,
         )
 
@@ -100,7 +98,7 @@ class SignalConverter:
         source_rows = 0
 
         for chunk in reader:
-            values = chunk.to_numpy()[::STEP]
+            values = chunk.to_numpy()[:: self.STEP]
             data[written:written + len(values), :] = values
             written += len(values)
             source_rows += len(chunk)
@@ -114,15 +112,18 @@ class SignalConverter:
             if self.cancelled:
                 del data
                 target_signal_path.unlink()  # Remove the binary data file
+                if progress_callback:
+                    progress_callback.emit(0)
                 return False
 
-        data.flush()  # again, once more force the array to write changes to disk
-        if not self.cancelled and progress_callback:
+        del data
+        # Blank lines are counted by count_data_rows but skipped by pandas; drop the unused rows at the end.
+        if written < n_out:
+            with target_signal_path.open("r+b") as target_file:
+                target_file.truncate(written * 2 * np.dtype(np.int16).itemsize)
+
+        if progress_callback:
             # Finish the progress bar.
             progress_callback.emit(100)
-        if self.cancelled and progress_callback:
-            del data
-            target_signal_path.unlink()
-            progress_callback.emit(0)
 
-        return not self.cancelled
+        return True
