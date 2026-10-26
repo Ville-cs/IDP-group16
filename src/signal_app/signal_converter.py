@@ -1,8 +1,30 @@
+import re
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import Signal
+
+SOURCE_SAMPLE_RATE = 50_000  # all source CSVs are assumed to be sampled at 50 kHz
+TARGET_SAMPLE_RATE = 1_000
+
+# The binary files carry no metadata, so a downsampled file's sample rate is stored in its name, e.g. "signal_1kHz.npy".
+_SAMPLE_RATE_TAG = re.compile(r"_(\d+)(k?)Hz$", re.IGNORECASE)
+
+
+def with_sample_rate_tag(path: Path, sample_rate: int = TARGET_SAMPLE_RATE) -> Path:
+    """Return `path` with a sample rate tag at the end of its stem, replacing any existing tag."""
+    stem = _SAMPLE_RATE_TAG.sub("", path.stem)
+    tag = f"_{sample_rate // 1000}kHz" if sample_rate % 1000 == 0 else f"_{sample_rate}Hz"
+    return path.with_name(f"{stem}{tag}{path.suffix}")
+
+
+def sample_rate_from_path(path: Path) -> int:
+    """Return the sample rate given by the tag in `path`'s name, or the source sample rate if it has no tag."""
+    match = _SAMPLE_RATE_TAG.search(path.stem)
+    if not match:
+        return SOURCE_SAMPLE_RATE
+    return int(match.group(1)) * (1000 if match.group(2) else 1)
 
 
 class SignalConverter:
@@ -26,8 +48,6 @@ class SignalConverter:
          threadpool.start(worker)
     """
 
-    SOURCE_SAMPLE_RATE = 50_000  # all source CSVs are assumed to be sampled at 50 kHz
-    TARGET_SAMPLE_RATE = 1_000
     STEP = SOURCE_SAMPLE_RATE // TARGET_SAMPLE_RATE  # keep every 50th sample
     CHUNK_ROWS = 10 * SOURCE_SAMPLE_RATE  # read ten seconds of the signal at a time
 

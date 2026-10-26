@@ -14,7 +14,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QProgressDialog
 
 from signal_app.signal_app_widget import SignalAppWidget
-from signal_app.signal_converter import SignalConverter
+from signal_app.signal_converter import SignalConverter, with_sample_rate_tag
 from signal_app.worker import Worker
 
 logging.basicConfig(level=logging.DEBUG)
@@ -77,7 +77,7 @@ class SignalAppMainWindow(QMainWindow):
         converted_signal_path, self.selected_save_filter = QFileDialog.getSaveFileName(
             self,
             self.tr("Save Industrial Project signal file"),
-            str(self.signal_path.with_suffix(".npy")),
+            str(with_sample_rate_tag(self.signal_path.with_suffix(".npy"))),
             self.tr("Signal files (*.npy)"),
             self.selected_save_filter,
         )
@@ -85,7 +85,8 @@ class SignalAppMainWindow(QMainWindow):
             logger.debug("File->Convert: user cancelled file selection.")
             return
 
-        self.converted_signal_path = Path(converted_signal_path)
+        # The analyzer reads the sample rate from the file name, so make sure the tag survives the user's edits.
+        self.converted_signal_path = with_sample_rate_tag(Path(converted_signal_path))
 
         # Prepare a modal progress dialog. QProgressDialog shows a label, progress bar, and a cancel button.
         # Modal dialogs block the application underneath, and we don't need to worry about user trying to

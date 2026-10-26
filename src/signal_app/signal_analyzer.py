@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import Signal
 
+from signal_app.signal_converter import SOURCE_SAMPLE_RATE, sample_rate_from_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,17 +23,38 @@ class SignalAnalyzer:
     is emitted through callbacks back to the parent thread.
     """
 
+    WINDOW_SECONDS = 600  # Let's take 10 minutes of the signal
+    CHUNK_SECONDS = 10  # ten seconds at a time
+    PLOT_SAMPLE_RATE = 500  # Plotting every sample is unfeasible, so the chart is shown at most at this rate
+
     def __init__(self):
         self.signal_path = None
         self.running = False
-        self.window_size = 600 * 50000  # Let's take 10 minutes of the signal
-        self.chunk_size = 500000  # ten second at a time
+        self._set_sample_rate(SOURCE_SAMPLE_RATE)
+
+    def _set_sample_rate(self, sample_rate: int):
+        """
+        Set the sample rate and reset everything that is measured in samples.
+        """
+        self.sample_rate = sample_rate
+        self.window_size = self.WINDOW_SECONDS * sample_rate
+        self.chunk_size = self.CHUNK_SECONDS * sample_rate
+        self.plot_step = max(1, sample_rate // self.PLOT_SAMPLE_RATE)
         self.x = 0
         self.max_x = 0
         self.x_array = np.zeros((self.window_size,))
         self.y_array = np.zeros_like(self.x_array) * np.nan
         self.y_max = -np.inf  # Use ridiculous values to force y-scale change
         self.y_min = np.inf
+
+    def _set_signal_path(self, signal_path: Path):
+        """
+        Set the signal file. Opening a different file resets the window state to the file's sample rate.
+        """
+        if signal_path != self.signal_path:
+            self._set_sample_rate(sample_rate_from_path(signal_path))
+            logger.debug("Signal '%s' sample rate: %d Hz", signal_path, self.sample_rate)
+        self.signal_path = signal_path
 
     def _read_signal(self, chunk_size: int = 1) -> Iterator[np.ndarray]:
         """
@@ -160,7 +183,7 @@ class SignalAnalyzer:
         :param progress_callback: Signal to update progress meters.
         """
 
-        self.signal_path = signal_path
+        self._set_signal_path(signal_path)
         self._start(set_chart_axis_y)
 
         while self.running:
@@ -181,7 +204,7 @@ class SignalAnalyzer:
                 ]  # No guarantee that `chunk` is always of the requested size
                 self.x_array = (
                     np.linspace(self.x, self.x + self.window_size - 1, self.window_size)
-                    / 50000
+                    / self.sample_rate
                 )
                 self.y_array = np.roll(
                     self.y_array, -chunk_size
@@ -204,11 +227,11 @@ class SignalAnalyzer:
                 )
 
                 # Uh oh, we quickly notice that plotting this many points is downright unfeasible. Let's reduce the
-                # load for visualization by selecting only every 100th value in the arrays.
+                # load for visualization by selecting only every `plot_step`th value in the arrays.
                 vis_x = self.x_array[
-                    ::100
+                    :: self.plot_step
                 ].copy()  # these array slice views seem to go missing if not copied
-                vis_y = self.y_array[::100].copy()
+                vis_y = self.y_array[:: self.plot_step].copy()
 
                 logger.debug(
                     "Computation done in %.2f ms", (time.time() - start_time) * 1000
@@ -251,12 +274,12 @@ class SignalAnalyzer:
         :param set_chart_axis_y: Signal to update chart y-axis.
         :param update_chart: Signal to update a chart.
         :param progress_callback: Signal to update progress meters."""
-        self.signal_path = signal_path
+        self._set_signal_path(signal_path)
         if set_chart_axis_y:
             set_chart_axis_y.emit(self.y_min, self.y_max)
 
         self.x_array, self.y_array = self._read_signal_at(start_x, end_x)
-        self.x_array = self.x_array / 50000
+        self.x_array = self.x_array / self.sample_rate
         self.y_array = self.y_array[:, 1]
 
         # DETECTION ALGORITHMS
@@ -269,8 +292,8 @@ class SignalAnalyzer:
             y_max if (y_max := np.nanmax(self.y_array)) > self.y_max else self.y_max
         )
 
-        vis_x = self.x_array[::100]
-        vis_y = self.y_array[::100]
+        vis_x = self.x_array[:: self.plot_step]
+        vis_y = self.y_array[:: self.plot_step]
 
         if set_chart_axis_y:
             set_chart_axis_y.emit(self.y_min, self.y_max)
@@ -287,6 +310,7 @@ class SignalAnalyzer:
         update_chart: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
+        self._set_signal_path(signal_path)
         self.load_window(
             self.x,
             self.x + self.window_size,
@@ -303,6 +327,7 @@ class SignalAnalyzer:
         update_chart: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
+        self._set_signal_path(signal_path)
         self.x = self.x - self.window_size if self.x > self.window_size else 0
         self.load_window(
             self.x,
@@ -320,6 +345,7 @@ class SignalAnalyzer:
         update_chart: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
+        self._set_signal_path(signal_path)
         self.x = (
             self.x + self.window_size
             if self.max_x > self.x + self.window_size
