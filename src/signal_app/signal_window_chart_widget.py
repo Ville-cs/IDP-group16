@@ -11,9 +11,9 @@ import logging
 import time
 
 import numpy as np
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCharts import QChart, QChartView, QLineSeries, QScatterSeries, QValueAxis
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QWidget
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ class SignalWindowChartWidget(QWidget):
 
         # Keep linters happy by setting class fields in the __init__
         self.series: QLineSeries | None = None
+        self.peak_series: QScatterSeries | None = None
         self.axis_x: QValueAxis | None = None
         self.axis_y: QValueAxis | None = None
 
@@ -32,6 +33,7 @@ class SignalWindowChartWidget(QWidget):
         # self.chart.setAnimationOptions(QChart.AllAnimations)
         # self.chart.setAnimationDuration(50)
         self.add_series("Amplitude")
+        self.add_peak_series("Peaks")
 
         self.chart_view = QChartView(self.chart)
         self.chart_view.setRenderHint(QPainter.Antialiasing)
@@ -42,6 +44,12 @@ class SignalWindowChartWidget(QWidget):
         self.main_layout.addWidget(self.chart_view)
 
         self.setLayout(self.main_layout)
+
+    @Slot(np.ndarray, np.ndarray)
+    def set_peaks(self, x: np.ndarray, y: np.ndarray):
+        # Fancy-indexed arrays own their data, but make sure they are float64 like in `replace_array`.
+        self.peak_series.replaceNp(x.astype(np.float64), y.astype(np.float64))
+        self.chart.setTitle(f"Detected peaks: {len(x)}")
 
     @Slot(float, float)
     def set_axis_y(self, min_y: float, max_y: float):
@@ -67,6 +75,19 @@ class SignalWindowChartWidget(QWidget):
         self.axis_y.setTitleText("Amplitude")
         self.chart.addAxis(self.axis_y, Qt.AlignLeft)
         self.series.attachAxis(self.axis_y)
+
+    def add_peak_series(self, name: str):
+        # Draw the detected peaks as markers on top of the signal, sharing the signal's axes.
+        self.peak_series = QScatterSeries()
+        self.peak_series.setName(name)
+        self.peak_series.setMarkerShape(QScatterSeries.MarkerShapeTriangle)
+        self.peak_series.setMarkerSize(12)
+        self.peak_series.setColor(QColor("red"))
+        self.peak_series.setBorderColor(QColor("red"))
+
+        self.chart.addSeries(self.peak_series)
+        self.peak_series.attachAxis(self.axis_x)
+        self.peak_series.attachAxis(self.axis_y)
 
     @Slot(np.ndarray, np.ndarray)
     def replace_array(
