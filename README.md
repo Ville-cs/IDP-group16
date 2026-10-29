@@ -55,12 +55,6 @@ be run with command
 
 from the project directory.
 
-Other solutions, like **Anaconda**, should be able to run the program in the
-designated virtual environment simply by running
-
-    conda activate idp2026
-    python -m singal_app.signal_app_main_window
-
 ## File tree
 
 - signal_app
