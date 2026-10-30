@@ -20,6 +20,7 @@ class SignalAppWidget(QWidget):
     # Signals for SignalAnalyzer callbacks
     chart_set_axis_y = Signal(float, float)
     chart_update_data = Signal(np.ndarray, np.ndarray)
+    chart_set_peaks = Signal(np.ndarray, np.ndarray)
 
     def __init__(self):
         super().__init__()
@@ -36,6 +37,9 @@ class SignalAppWidget(QWidget):
         )
         self.chart_update_data.connect(
             self.signal_window_chart.replace_array, type=Qt.BlockingQueuedConnection
+        )
+        self.chart_set_peaks.connect(
+            self.signal_window_chart.set_peaks, type=Qt.BlockingQueuedConnection
         )
 
         # Add buttons to start and stop the signal analyzer.
@@ -89,6 +93,7 @@ class SignalAppWidget(QWidget):
             signal_path=self.signal_path,
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
+            set_peaks=self.chart_set_peaks,
         )
 
         # Worker-class defines a "signals"-field that is a WorkerSignal-instance.
@@ -113,6 +118,7 @@ class SignalAppWidget(QWidget):
             signal_path=self.signal_path,
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
+            set_peaks=self.chart_set_peaks,
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
@@ -124,6 +130,7 @@ class SignalAppWidget(QWidget):
             signal_path=self.signal_path,
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
+            set_peaks=self.chart_set_peaks,
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
@@ -135,6 +142,7 @@ class SignalAppWidget(QWidget):
             signal_path=self.signal_path,
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
+            set_peaks=self.chart_set_peaks,
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
