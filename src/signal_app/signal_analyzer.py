@@ -27,6 +27,11 @@ class SignalAnalyzer:
     CHUNK_SECONDS = 10  # ten seconds at a time
     PLOT_SAMPLE_RATE = 500  # Plotting every sample is unfeasible, so the chart is shown at most at this rate
 
+    # Peak detection parameters
+    PEAK_HEIGHT = 70  # minimum peak height above the baseline (ADC units)
+    PEAK_MIN_DISTANCE_SECONDS = 0.3  # peaks closer than this are counted as one
+    BASELINE_SECONDS = 1.0  # the baseline is the signal median over blocks of this length
+
     def __init__(self):
         self.signal_path = None
         self.running = False
@@ -55,6 +60,47 @@ class SignalAnalyzer:
             self._set_sample_rate(sample_rate_from_path(signal_path))
             logger.debug("Signal '%s' sample rate: %d Hz", signal_path, self.sample_rate)
         self.signal_path = signal_path
+
+    def detect_peaks(self, y: np.ndarray) -> np.ndarray:
+        """
+        Detect peaks rising more than `PEAK_HEIGHT` above the signal baseline.
+
+        The baseline follows slow drifts in the signal: it is the median of each `BASELINE_SECONDS` block. Every
+        stretch of the signal above the threshold yields its highest point, and peaks closer than
+        `PEAK_MIN_DISTANCE_SECONDS` to a higher one are dropped.
+
+        :param y: the signal. NaN values at either end (an unfilled window) are ignored.
+        :return: indices of the detected peaks in `y`.
+        """
+        finite = np.flatnonzero(np.isfinite(y))
+        if finite.size == 0:
+            return np.array([], dtype=int)
+        offset = finite[0]
+        y = y[offset : finite[-1] + 1]
+
+        # Pad the signal with NaNs to a whole number of blocks, so it can be reshaped into one row per block.
+        block = int(self.BASELINE_SECONDS * self.sample_rate)
+        n_blocks = -(-len(y) // block)
+        padded = np.full(n_blocks * block, np.nan)
+        padded[: len(y)] = y
+        baseline = np.repeat(np.nanmedian(padded.reshape(n_blocks, block), axis=1), block)[: len(y)]
+        heights = y - baseline
+
+        # Find where the signal crosses the threshold up (starts) and back down (ends).
+        above = np.concatenate(([False], heights > self.PEAK_HEIGHT, [False]))
+        crossings = np.flatnonzero(np.diff(above.astype(np.int8)))
+        starts, ends = crossings[::2], crossings[1::2]
+
+        min_distance = self.PEAK_MIN_DISTANCE_SECONDS * self.sample_rate
+        peaks = []
+        for start, end in zip(starts, ends):
+            peak = start + int(np.argmax(heights[start:end]))
+            if peaks and peak - peaks[-1] < min_distance:
+                if heights[peak] > heights[peaks[-1]]:
+                    peaks[-1] = peak
+            else:
+                peaks.append(peak)
+        return np.array(peaks, dtype=int) + offset
 
     def _read_signal(self, chunk_size: int = 1) -> Iterator[np.ndarray]:
         """
@@ -172,6 +218,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        set_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         """
@@ -180,6 +227,7 @@ class SignalAnalyzer:
         :param signal_path: the path to the signal data file.
         :param set_chart_axis_y: Signal to update chart y-axis.
         :param update_chart: Signal to update a chart.
+        :param set_peaks: Signal to mark the detected peaks (time and amplitude arrays) on the chart.
         :param progress_callback: Signal to update progress meters.
         """
 
@@ -233,6 +281,11 @@ class SignalAnalyzer:
                 ].copy()  # these array slice views seem to go missing if not copied
                 vis_y = self.y_array[:: self.plot_step].copy()
 
+                # Detect peaks in the visible window
+                peaks = self.detect_peaks(self.y_array)
+                peak_x = self.x_array[peaks]
+                peak_y = self.y_array[peaks]
+
                 logger.debug(
                     "Computation done in %.2f ms", (time.time() - start_time) * 1000
                 )
@@ -244,6 +297,9 @@ class SignalAnalyzer:
                 # This signal will now block the thread until chart update is finished
                 if update_chart:
                     update_chart.emit(vis_x, vis_y)
+
+                if set_peaks:
+                    set_peaks.emit(peak_x, peak_y)
 
                 if progress_callback:
                     # This loop has no meaningful progress.
@@ -265,6 +321,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        set_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         """Loads a signal window.
@@ -273,6 +330,7 @@ class SignalAnalyzer:
         :param signal_path: the path to the signal data file.
         :param set_chart_axis_y: Signal to update chart y-axis.
         :param update_chart: Signal to update a chart.
+        :param set_peaks: Signal to mark the detected peaks (time and amplitude arrays) on the chart.
         :param progress_callback: Signal to update progress meters."""
         self._set_signal_path(signal_path)
         if set_chart_axis_y:
@@ -283,6 +341,7 @@ class SignalAnalyzer:
         self.y_array = self.y_array[:, 1]
 
         # DETECTION ALGORITHMS
+        peaks = self.detect_peaks(self.y_array)
 
         # Update y-axis min/max if need be:
         self.y_min = (
@@ -301,13 +360,15 @@ class SignalAnalyzer:
         if update_chart:
             update_chart.emit(vis_x, vis_y)
 
-        # ADD MARKERS TO CHART
+        if set_peaks:
+            set_peaks.emit(self.x_array[peaks], self.y_array[peaks])
 
     def current_window(
         self,
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        set_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -317,6 +378,7 @@ class SignalAnalyzer:
             signal_path,
             set_chart_axis_y,
             update_chart,
+            set_peaks,
             progress_callback,
         )
 
@@ -325,6 +387,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        set_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -335,6 +398,7 @@ class SignalAnalyzer:
             signal_path,
             set_chart_axis_y,
             update_chart,
+            set_peaks,
             progress_callback,
         )
 
@@ -343,6 +407,7 @@ class SignalAnalyzer:
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
+        set_peaks: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -357,6 +422,7 @@ class SignalAnalyzer:
             signal_path,
             set_chart_axis_y,
             update_chart,
+            set_peaks,
             progress_callback,
         )
 
