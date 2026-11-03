@@ -20,7 +20,7 @@ class SignalAppWidget(QWidget):
     # Signals for SignalAnalyzer callbacks
     chart_set_axis_y = Signal(float, float)
     chart_update_data = Signal(np.ndarray, np.ndarray)
-    chart_set_peaks = Signal(np.ndarray, np.ndarray)
+    chart_set_peaks = Signal(np.ndarray, np.ndarray, str)
 
     def __init__(self):
         super().__init__()

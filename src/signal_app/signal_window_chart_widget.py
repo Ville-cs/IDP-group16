@@ -45,11 +45,11 @@ class SignalWindowChartWidget(QWidget):
 
         self.setLayout(self.main_layout)
 
-    @Slot(np.ndarray, np.ndarray)
-    def set_peaks(self, x: np.ndarray, y: np.ndarray):
+    @Slot(np.ndarray, np.ndarray, str)
+    def set_peaks(self, x: np.ndarray, y: np.ndarray, summary: str):
         # Fancy-indexed arrays own their data, but make sure they are float64 like in `replace_array`.
         self.peak_series.replaceNp(x.astype(np.float64), y.astype(np.float64))
-        self.chart.setTitle(f"Detected peaks: {len(x)}")
+        self.chart.setTitle(summary)
 
     @Slot(float, float)
     def set_axis_y(self, min_y: float, max_y: float):
