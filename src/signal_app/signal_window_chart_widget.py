@@ -25,6 +25,7 @@ class SignalWindowChartWidget(QWidget):
 
         # Keep linters happy by setting class fields in the __init__
         self.series: QLineSeries | None = None
+        self.baseline_series: QLineSeries | None = None  # <-- Add for drawing the baseline 7/Nov
         self.peak_series: QScatterSeries | None = None
         self.axis_x: QValueAxis | None = None
         self.axis_y: QValueAxis | None = None
@@ -33,6 +34,7 @@ class SignalWindowChartWidget(QWidget):
         # self.chart.setAnimationOptions(QChart.AllAnimations)
         # self.chart.setAnimationDuration(50)
         self.add_series("Amplitude")
+        self.add_baseline_series("Baseline (Mean)")  # <-- Add for baseline 7/Nov
         self.add_peak_series("Peaks")
 
         self.chart_view = QChartView(self.chart)
@@ -128,3 +130,22 @@ class SignalWindowChartWidget(QWidget):
         logger.debug(
             "Finished updating chart in %.2f ms", (end_time - start_time) * 1000
         )
+
+    def add_baseline_series(self, name: str):
+        self.baseline_series = QLineSeries()
+        self.baseline_series.setName(name)
+        
+        # Style the baseline as a dashed gray line
+        pen = self.baseline_series.pen()
+        pen.setWidth(3)
+        pen.setStyle(Qt.SolidLine)
+        pen.setColor(QColor("green"))
+        self.baseline_series.setPen(pen)
+
+        self.chart.addSeries(self.baseline_series)
+        self.baseline_series.attachAxis(self.axis_x)
+        self.baseline_series.attachAxis(self.axis_y)
+
+    @Slot(np.ndarray, np.ndarray)
+    def set_baseline(self, x: np.ndarray, y: np.ndarray):
+        self.baseline_series.replaceNp(x.astype(np.float64), y.astype(np.float64))

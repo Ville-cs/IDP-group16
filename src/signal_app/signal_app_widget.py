@@ -20,7 +20,9 @@ class SignalAppWidget(QWidget):
     # Signals for SignalAnalyzer callbacks
     chart_set_axis_y = Signal(float, float)
     chart_update_data = Signal(np.ndarray, np.ndarray)
+
     chart_set_peaks = Signal(np.ndarray, np.ndarray, str)
+    chart_set_baseline = Signal(np.ndarray, np.ndarray)  # <-- Add this for drawing baseline 7/Nov
 
     def __init__(self):
         super().__init__()
@@ -40,6 +42,10 @@ class SignalAppWidget(QWidget):
         )
         self.chart_set_peaks.connect(
             self.signal_window_chart.set_peaks, type=Qt.BlockingQueuedConnection
+        )
+        # add for baseline 7/Nov
+        self.chart_set_baseline.connect(
+            self.signal_window_chart.set_baseline, type=Qt.BlockingQueuedConnection
         )
 
         # Add buttons to start and stop the signal analyzer.
@@ -94,6 +100,7 @@ class SignalAppWidget(QWidget):
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
             set_peaks=self.chart_set_peaks,
+            set_baseline=self.chart_set_baseline,  # <-- Add for baseline 7/Nov
         )
 
         # Worker-class defines a "signals"-field that is a WorkerSignal-instance.
@@ -119,6 +126,7 @@ class SignalAppWidget(QWidget):
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
             set_peaks=self.chart_set_peaks,
+            set_baseline=self.chart_set_baseline,  # <-- ADD THIS
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
@@ -131,6 +139,7 @@ class SignalAppWidget(QWidget):
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
             set_peaks=self.chart_set_peaks,
+            set_baseline=self.chart_set_baseline,  # <-- ADD THIS
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
@@ -143,6 +152,7 @@ class SignalAppWidget(QWidget):
             set_chart_axis_y=self.chart_set_axis_y,
             update_chart=self.chart_update_data,
             set_peaks=self.chart_set_peaks,
+            set_baseline=self.chart_set_baseline,  # <-- ADD THIS
         )
         worker.signals.finished.connect(self._updated_window_signal_analyzer)
         self.threadpool.start(worker)
