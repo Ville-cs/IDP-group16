@@ -57,10 +57,6 @@ class SignalAnalyzer:
     PEAK_MIN_SIZE = 20  # a peak's size is never allowed below this (ADC units), which is well above the noise
     PEAK_RELATIVE_SIZE = 0.075  # minimum peak size as a fraction of the recording's reference size
     PEAK_REFERENCE_PERCENTILE = 95  # the reference size is this percentile of the sizes of all candidate peaks
-    PEAK_HEIGHT = 1000  # minimum peak height above the baseline (ADC units) chang from 70 to 1000
-    BASELINE_SECONDS = 1.0  # the baseline is the signal median over blocks of this length
-    BASELINE_WINDOW_SECONDS = 0.5  # the baseline is calculated over this many seconds of signal
-
 
     def __init__(self):
         self.signal_path = None
@@ -188,44 +184,6 @@ class SignalAnalyzer:
             summary,
         )
 
-    # def detect_peaks(self, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    #     """
-    #     Detect peaks and calculate the baseline using the global mean.
-    #     """
-    #     finite = np.isfinite(y)
-    #     if not np.any(finite):
-    #         return np.array([], dtype=int), np.full_like(y, np.nan)
-        
-    #     # 1. Calculate the baseline as (max + min) / 2
-    #     min_val = np.nanmin(y)
-    #     max_val = np.nanmax(y)
-    #     mean_val = (max_val + min_val) / 2.0
-        
-    #     # 2. Create the flat baseline array
-    #     baseline = np.full_like(y, mean_val)
-        
-    #     # 3. Calculate heights relative to the mean baseline
-    #     heights = y - baseline
-
-    #     # Find threshold crossings
-    #     above = np.concatenate(([False], (heights > self.PEAK_HEIGHT) & finite, [False]))
-    #     crossings = np.flatnonzero(np.diff(above.astype(np.int8)))
-    #     starts, ends = crossings[::2], crossings[1::2]
-
-    #     min_distance = self.PEAK_MIN_DISTANCE_SECONDS * self.sample_rate
-    #     peaks = []
-    #     for start, end in zip(starts, ends):
-    #         if np.all(np.isnan(heights[start:end])):
-    #             continue
-    #         peak = start + int(np.nanargmax(heights[start:end]))
-    #         if peaks and peak - peaks[-1] < min_distance:
-    #             if heights[peak] > heights[peaks[-1]]:
-    #                 peaks[-1] = peak
-    #         else:
-    #             peaks.append(peak)
-                
-    #     return np.array(peaks, dtype=int), baseline
-
     def _read_signal(self, chunk_size: int = 1) -> Iterator[np.ndarray]:
         """
         Read the signal file in chunks of `chunk_size` rows.
@@ -343,7 +301,6 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
-        set_baseline: Signal | None = None, # <-- Add this for baseline 7/Nov
         progress_callback: Signal | None = None,
     ):
         """
@@ -407,76 +364,6 @@ class SignalAnalyzer:
                 ].copy()  # these array slice views seem to go missing if not copied
                 vis_y = self.y_array[:: self.plot_step].copy()
 
-                # Detect peaks in the visible window
-                peaks = self.detect_peaks(self.y_array)
-                # peaks, baseline = self.detect_peaks(self.y_array) # <-- Fix: unpack tuple
-                peak_x = self.x_array[peaks]
-                peak_y = self.y_array[peaks]
-
-                # Create a downsampled array for the baseline visualization
-                # vis_baseline = baseline[:: self.plot_step].copy() # <-- Add: downsample baseline
-                # 1st CALCULATE BASELINE FOR THE VISIBLE WINDOW ONLY (Min + Max) / 2
-                # if np.any(np.isfinite(vis_y)):
-                #     vis_min = np.nanmin(vis_y)
-                #     vis_max = np.nanmax(vis_y)
-                #     mean_val = (vis_max + vis_min) / 2.0
-                #     vis_baseline = np.full_like(vis_y, mean_val)
-                # else:
-                #     vis_baseline = np.full_like(vis_y, np.nan)
-                
-                # 2nd CALCULATE BASELINE BASED ON ALL DETECTED PEAKS
-                # if len(peaks) > 0 and np.any(np.isfinite(vis_y)):
-                #     peak_values = self.y_array[peaks]
-                #     mean_peak_height = np.mean(peak_values)
-                #     min_val = np.nanmin(vis_y)
-                    
-                #     baseline_val = (mean_peak_height + min_val) / 2.0
-                #     vis_baseline = np.full_like(vis_y, baseline_val)
-                # else:
-                #     vis_baseline = np.full_like(vis_y, np.nan)
-
-                # 3.CALCULATE 5-SECOND ROLLING BASELINE
-                # 5 seconds * 50,000 samples/sec = 250,000 points
-                # baseline_samples = int(self.BASELINE_WINDOW_SECONDS * self.sample_rate)
-                
-                # if baseline_samples > 0 and len(self.y_array) > 0:
-                #     # Pad the start with the first value so the first 5 seconds have data
-                #     padded_y = np.pad(self.y_array, (baseline_samples - 1, 0), mode='edge')
-                    
-                #     # This is a fast way to calculate the rolling average using a cumulative sum
-                #     cumsum = np.cumsum(np.insert(padded_y, 0, 0))
-                #     rolling_mean = (cumsum[baseline_samples:] - cumsum[:-baseline_samples]) / baseline_samples
-                    
-                #     # Extract the rolling baseline that matches the visible window
-                #     vis_baseline = rolling_mean[:: self.plot_step]
-                # else:
-                #     vis_baseline = np.full_like(vis_y, np.nan)
-
-                # CALCULATE BASELINE FROM THE LAST 5 SECONDS OF DATA
-                baseline_samples = int(5.0 * self.sample_rate)
-                
-                if len(self.y_array) > 0:
-                    # Only look at the last 5 seconds of the raw data (or less if the file is shorter)
-                    recent_data = self.y_array[-baseline_samples:]
-                    
-                    # Find the max and min of JUST this 5-second chunk
-                    recent_max = np.nanmax(recent_data)
-                    recent_min = np.nanmin(recent_data)
-                    
-                    # Your requested formula: (Max + Min) / 2
-                    mean_val = (recent_max + recent_min) / 2.0
-                    vis_baseline = np.full_like(vis_y, mean_val)
-                else:
-                    vis_baseline = np.full_like(vis_y, np.nan)
-
-                # Update y-axis min/max if need be:
-                self.y_min = (
-                    y_min if (y_min := np.nanmin(self.y_array)) < self.y_min else self.y_min
-                )
-                self.y_max = (
-                    y_max if (y_max := np.nanmax(self.y_array)) > self.y_max else self.y_max
-                )
-
                 logger.debug(
                     "Computation done in %.2f ms", (time.time() - start_time) * 1000
                 )
@@ -490,12 +377,6 @@ class SignalAnalyzer:
                     update_chart.emit(vis_x, vis_y)
 
                 self._emit_peaks(set_peaks, self.x, self.x + self.window_size)
-
-                if set_baseline: # <-- Add this for baselne 7/Nov
-                    set_baseline.emit(vis_x, vis_baseline)
-
-                if set_peaks:
-                    set_peaks.emit(peak_x, peak_y)
 
                 if progress_callback:
                     # This loop has no meaningful progress.
@@ -518,7 +399,6 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
-        set_baseline: Signal | None = None, # <-- Add this for baseline 7/Nov
         progress_callback: Signal | None = None,
     ):
         """Loads a signal window.
@@ -538,71 +418,7 @@ class SignalAnalyzer:
         self.y_array = self.y_array[:, 1]
 
         # DETECTION ALGORITHMS
-
         self._ensure_peaks()
-        peaks = self.detect_peaks(self.y_array)
-        # peaks, baseline = self.detect_peaks(self.y_array) # <-- Fix: unpack tuple
-        
-        # vis_baseline = baseline[:: self.plot_step] # <-- Add: downsample baseline
-
-        vis_x = self.x_array[:: self.plot_step]
-        vis_y = self.y_array[:: self.plot_step]
-
-        # # CALCULATE BASELINE FOR THE VISIBLE WINDOW ONLY (Min + Max) / 2
-        # if np.any(np.isfinite(vis_y)):
-        #     vis_min = np.nanmin(vis_y)
-        #     vis_max = np.nanmax(vis_y)
-        #     mean_val = (vis_max + vis_min) / 2.0
-        #     vis_baseline = np.full_like(vis_y, mean_val)
-        # else:
-        #     vis_baseline = np.full_like(vis_y, np.nan)
-
-        # #CALCULATE BASELINE BASED ON ALL DETECTED PEAKS
-        # if len(peaks) > 0 and np.any(np.isfinite(vis_y)):
-        #     peak_values = self.y_array[peaks]          # Get the heights of all detected peaks
-        #     mean_peak_height = np.mean(peak_values)    # Average height of the peaks
-        #     min_val = np.nanmin(vis_y)                 # Minimum noise floor
-            
-        #     # Baseline = halfway between the minimum and the average peak height
-        #     baseline_val = (mean_peak_height + min_val) / 2.0
-        #     vis_baseline = np.full_like(vis_y, baseline_val)
-        # else:
-        #     # If there are no peaks, hide the baseline
-        #     vis_baseline = np.full_like(vis_y, np.nan)
-
-        # CALCULATE 5-SECOND ROLLING BASELINE
-        # # 5 seconds * 50,000 samples/sec = 250,000 points
-        # baseline_samples = int(self.BASELINE_WINDOW_SECONDS * self.sample_rate)
-        
-        # if baseline_samples > 0 and len(self.y_array) > 0:
-        #     # Pad the start with the first value so the first 5 seconds have data
-        #     padded_y = np.pad(self.y_array, (baseline_samples - 1, 0), mode='edge')
-            
-        #     # This is a fast way to calculate the rolling average using a cumulative sum
-        #     cumsum = np.cumsum(np.insert(padded_y, 0, 0))
-        #     rolling_mean = (cumsum[baseline_samples:] - cumsum[:-baseline_samples]) / baseline_samples
-            
-        #     # Extract the rolling baseline that matches the visible window
-        #     vis_baseline = rolling_mean[:: self.plot_step]
-        # else:
-        #     vis_baseline = np.full_like(vis_y, np.nan)
-
-        # CALCULATE BASELINE FROM THE LAST 5 SECONDS OF DATA
-        baseline_samples = int(5.0 * self.sample_rate)
-        
-        if len(self.y_array) > 0:
-            # Only look at the last 5 seconds of the raw data (or less if the file is shorter)
-            recent_data = self.y_array[-baseline_samples:]
-            
-            # Find the max and min of JUST this 5-second chunk
-            recent_max = np.nanmax(recent_data)
-            recent_min = np.nanmin(recent_data)
-            
-            # Your requested formula: (Max + Min) / 2
-            mean_val = (recent_max + recent_min) / 2.0
-            vis_baseline = np.full_like(vis_y, mean_val)
-        else:
-            vis_baseline = np.full_like(vis_y, np.nan)
 
         # Update y-axis min/max if need be:
         self.y_min = (
@@ -612,14 +428,14 @@ class SignalAnalyzer:
             y_max if (y_max := np.nanmax(self.y_array)) > self.y_max else self.y_max
         )
 
+        vis_x = self.x_array[:: self.plot_step]
+        vis_y = self.y_array[:: self.plot_step]
+
         if set_chart_axis_y:
             set_chart_axis_y.emit(self.y_min, self.y_max)
 
         if update_chart:
             update_chart.emit(vis_x, vis_y)
-        
-        if set_baseline: # <-- Add this
-            set_baseline.emit(vis_x, vis_baseline)
 
         self._emit_peaks(set_peaks, start_x, end_x)
 
@@ -629,7 +445,6 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
-        set_baseline: Signal | None = None, # <-- Add this for baseline 7/Nov
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -640,7 +455,6 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
-            set_baseline, # <-- Add this for baseline 7/Nov 
             progress_callback,
         )
 
@@ -650,7 +464,6 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
-        set_baseline: Signal | None = None, # <-- Add this for baseline 7/Nov
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -662,7 +475,6 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
-            set_baseline, # <-- Add this for baseline 7/Nov 
             progress_callback,
         )
 
@@ -672,7 +484,6 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
-        set_baseline: Signal | None = None,
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -688,7 +499,6 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
-            set_baseline, # <-- Add this for baseline 7/Nov 
             progress_callback,
         )
 
