@@ -58,6 +58,10 @@ class SignalAnalyzer:
     PEAK_RELATIVE_SIZE = 0.075  # minimum peak size as a fraction of the recording's reference size
     PEAK_REFERENCE_PERCENTILE = 95  # the reference size is this percentile of the sizes of all candidate peaks
 
+    # ADDED: Variables for the baseline calculation
+    PEAK_HEIGHT = 3000
+    BASELINE_WINDOW_SECONDS = 2.0
+
     def __init__(self):
         self.signal_path = None
         self.running = False
@@ -160,10 +164,17 @@ class SignalAnalyzer:
             return
         step = max(1, self.sample_rate // self.PEAK_DETECTION_SAMPLE_RATE)
         y = self._read_detection_signal(step)
+        
+        # Original peaks
         peaks = self.detect_peaks(y, self.sample_rate / step)
-        self.peak_values = y[peaks]
-        self.peak_samples = peaks * step
-        logger.debug("Detected %d peaks in '%s'", len(peaks), self.signal_path)
+        
+        # ADDED: Failsafe to guarantee giant spikes are detected
+        hard_peaks = np.where(y > self.PEAK_HEIGHT)[0]
+        all_peaks = np.unique(np.concatenate((peaks, hard_peaks)))
+        
+        self.peak_values = y[all_peaks]
+        self.peak_samples = all_peaks * step
+        logger.debug("Detected %d peaks in '%s'", len(all_peaks), self.signal_path)
 
     def _emit_peaks(self, set_peaks: Signal | None, start_x: int, end_x: int):
         """
@@ -301,6 +312,7 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
+        set_baseline: Signal | None = None,  # ADDED: Baseline signal
         progress_callback: Signal | None = None,
     ):
         """
@@ -364,6 +376,17 @@ class SignalAnalyzer:
                 ].copy()  # these array slice views seem to go missing if not copied
                 vis_y = self.y_array[:: self.plot_step].copy()
 
+                # ADDED: Calculate baseline from the last 2 seconds
+                baseline_samples = int(self.BASELINE_WINDOW_SECONDS * self.sample_rate)
+                if len(self.y_array) > 0 and np.any(np.isfinite(self.y_array[-baseline_samples:])):
+                    recent_data = self.y_array[-baseline_samples:]
+                    recent_max = np.nanmax(recent_data)
+                    recent_min = np.nanmin(recent_data)
+                    mean_val = (recent_max + recent_min) / 2.0
+                    vis_baseline = np.full_like(vis_y, mean_val)
+                else:
+                    vis_baseline = np.full_like(vis_y, np.nan)
+
                 logger.debug(
                     "Computation done in %.2f ms", (time.time() - start_time) * 1000
                 )
@@ -377,6 +400,10 @@ class SignalAnalyzer:
                     update_chart.emit(vis_x, vis_y)
 
                 self._emit_peaks(set_peaks, self.x, self.x + self.window_size)
+
+                # ADDED: Emit baseline
+                if set_baseline:
+                    set_baseline.emit(vis_x, vis_baseline)
 
                 if progress_callback:
                     # This loop has no meaningful progress.
@@ -399,6 +426,7 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
+        set_baseline: Signal | None = None,  # ADDED: Baseline signal
         progress_callback: Signal | None = None,
     ):
         """Loads a signal window.
@@ -415,7 +443,12 @@ class SignalAnalyzer:
 
         self.x_array, self.y_array = self._read_signal_at(start_x, end_x)
         self.x_array = self.x_array / self.sample_rate
-        self.y_array = self.y_array[:, 1]
+        
+        # ADDED: Safety check to prevent IndexError crash
+        if self.y_array.ndim == 2:
+            self.y_array = self.y_array[:, 1]
+        else:
+            self.y_array = np.array([])
 
         # DETECTION ALGORITHMS
         self._ensure_peaks()
@@ -431,6 +464,17 @@ class SignalAnalyzer:
         vis_x = self.x_array[:: self.plot_step]
         vis_y = self.y_array[:: self.plot_step]
 
+        # ADDED: Calculate baseline from the last 2 seconds
+        baseline_samples = int(self.BASELINE_WINDOW_SECONDS * self.sample_rate)
+        if len(self.y_array) > 0 and np.any(np.isfinite(self.y_array[-baseline_samples:])):
+            recent_data = self.y_array[-baseline_samples:]
+            recent_max = np.nanmax(recent_data)
+            recent_min = np.nanmin(recent_data)
+            mean_val = (recent_max + recent_min) / 2.0
+            vis_baseline = np.full_like(vis_y, mean_val)
+        else:
+            vis_baseline = np.full_like(vis_y, np.nan)
+
         if set_chart_axis_y:
             set_chart_axis_y.emit(self.y_min, self.y_max)
 
@@ -439,12 +483,17 @@ class SignalAnalyzer:
 
         self._emit_peaks(set_peaks, start_x, end_x)
 
+        # ADDED: Emit baseline
+        if set_baseline:
+            set_baseline.emit(vis_x, vis_baseline)
+
     def current_window(
         self,
         signal_path: Path,
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
+        set_baseline: Signal | None = None,  # ADDED: Baseline signal
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -455,6 +504,7 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
+            set_baseline,  # ADDED: Pass baseline
             progress_callback,
         )
 
@@ -464,6 +514,7 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
+        set_baseline: Signal | None = None,  # ADDED: Baseline signal
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -475,6 +526,7 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
+            set_baseline,  # ADDED: Pass baseline
             progress_callback,
         )
 
@@ -484,6 +536,7 @@ class SignalAnalyzer:
         set_chart_axis_y: Signal | None = None,
         update_chart: Signal | None = None,
         set_peaks: Signal | None = None,
+        set_baseline: Signal | None = None,  # ADDED: Baseline signal
         progress_callback: Signal | None = None,
     ):
         self._set_signal_path(signal_path)
@@ -499,6 +552,7 @@ class SignalAnalyzer:
             set_chart_axis_y,
             update_chart,
             set_peaks,
+            set_baseline,  # ADDED: Pass baseline
             progress_callback,
         )
 
