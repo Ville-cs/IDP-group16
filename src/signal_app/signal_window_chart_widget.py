@@ -45,11 +45,11 @@ class SignalWindowChartWidget(QWidget):
 
         self.setLayout(self.main_layout)
 
-    @Slot(np.ndarray, np.ndarray)
-    def set_peaks(self, x: np.ndarray, y: np.ndarray):
+    @Slot(np.ndarray, np.ndarray, str)
+    def set_peaks(self, x: np.ndarray, y: np.ndarray, summary: str):
         # Fancy-indexed arrays own their data, but make sure they are float64 like in `replace_array`.
         self.peak_series.replaceNp(x.astype(np.float64), y.astype(np.float64))
-        self.chart.setTitle(f"Detected peaks: {len(x)}")
+        self.chart.setTitle(summary)
 
     @Slot(float, float)
     def set_axis_y(self, min_y: float, max_y: float):
@@ -80,10 +80,11 @@ class SignalWindowChartWidget(QWidget):
         # Draw the detected peaks as markers on top of the signal, sharing the signal's axes.
         self.peak_series = QScatterSeries()
         self.peak_series.setName(name)
-        self.peak_series.setMarkerShape(QScatterSeries.MarkerShapeTriangle)
-        self.peak_series.setMarkerSize(12)
-        self.peak_series.setColor(QColor("red"))
-        self.peak_series.setBorderColor(QColor("red"))
+        # Busy windows hold hundreds of peaks: small, borderless, translucent markers keep overlaps readable.
+        self.peak_series.setMarkerShape(QScatterSeries.MarkerShapeCircle)
+        self.peak_series.setMarkerSize(6)
+        self.peak_series.setColor(QColor(220, 0, 0, 170))
+        self.peak_series.setBorderColor(QColor(0, 0, 0, 0))
 
         self.chart.addSeries(self.peak_series)
         self.peak_series.attachAxis(self.axis_x)
